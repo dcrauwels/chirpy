@@ -15,8 +15,7 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 }
 
 func (cfg *apiConfig) hitsHandler(w http.ResponseWriter, r *http.Request) {
-	h := make(http.Header)
-	h.Add("Content-Type", "text/html")
+	w.Header().Set("Content-Type", "text/html")
 	body := fmt.Sprintf(`<html>
 			<body>
 				<h1>Welcome, Chirpy Admin</h1>
