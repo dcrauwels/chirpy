@@ -1,1 +1,2 @@
+# for easy go build -o out && ./out style temp compilations
 out
