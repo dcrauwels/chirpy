@@ -20,17 +20,17 @@ func main() {
 	mux := http.NewServeMux()
 
 	// register handlers
-	mux.HandleFunc("GET /api/healthz", readinessHandler)
-	mux.HandleFunc("POST /api/validate_chirp", validateHandler)
+	mux.HandleFunc("GET /api/healthz", readinessHandler)        //api.go
+	mux.HandleFunc("POST /api/validate_chirp", validateHandler) //api.go
 
-	mux.HandleFunc("GET /admin/metrics", apiCfg.hitsHandler)
-	mux.HandleFunc("POST /admin/reset", apiCfg.resetHandler)
+	mux.HandleFunc("GET /admin/metrics", apiCfg.hitsHandler) //admin.go
+	mux.HandleFunc("POST /admin/reset", apiCfg.resetHandler) //admin.go
 
 	// fileserver handler
 	fS := http.FileServer(http.Dir("."))
 	fS = http.StripPrefix("/app/", fS)
 
-	mux.Handle("/app/", apiCfg.middlewareMetricsInc(fS))
+	mux.Handle("/app/", apiCfg.middlewareMetricsInc(fS)) //middleware in admin.go
 
 	// server
 	s := http.Server{
