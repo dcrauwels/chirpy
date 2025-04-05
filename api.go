@@ -17,13 +17,14 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 func validateHandler(w http.ResponseWriter, r *http.Request) {
 	// constants
 	const maxChirpLength int = 140
+	var invalidWords = [3]string{"kerfuffle", "sharbert", "fornax"} //hardly a constant but used as one
 
 	// define types
 	type reqParameters struct {
 		Body string `json:"body"`
 	}
 	type respValidParameters struct {
-		Valid bool `json:"valid"`
+		CleanedBody string `json:"cleaned_body"`
 	}
 
 	// receive request
@@ -32,19 +33,23 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 	params := reqParameters{}
 	err := decoder.Decode(&params)
 	if err != nil {
-		writeError(w, 400, err, "request has incorrect JSON structure")
+		writeError(w, 400, err, "request has incorrect JSON structure") //json.go
 	}
 
-	// other possible error checks
+	// other possible checks
 
 	// chirp length
 	err = strutils.ChirpLength(params.Body, maxChirpLength)
 	if err != nil {
-		writeError(w, 400, err, fmt.Sprintf("chirp cannot exceed %d characters", maxChirpLength))
+		writeError(w, 400, err, fmt.Sprintf("chirp cannot exceed %d characters", maxChirpLength)) //json.go
+		return
 	}
+
+	// clean body
+	cleanedBody := strutils.ReplaceWord(params.Body, invalidWords[:], "****")
 
 	// send response
 
-	validParams := respValidParameters{Valid: true}
-	writeJSON(w, 200, validParams)
+	validParams := respValidParameters{CleanedBody: cleanedBody}
+	writeJSON(w, 200, validParams) //json.go
 }
