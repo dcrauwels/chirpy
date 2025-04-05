@@ -1,39 +1,13 @@
 package main
 
 import (
-	"fmt"
 	"net/http"
 	"sync/atomic"
+	"time"
 )
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
-}
-
-func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cfg.fileserverHits.Add(1)
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (cfg *apiConfig) hitsHandler(w http.ResponseWriter, r *http.Request) {
-	body := fmt.Sprintf("Hits: %d", cfg.fileserverHits.Load())
-	w.Write([]byte(body))
-}
-
-func readinessHandler(w http.ResponseWriter, r *http.Request) {
-	h := make(http.Header)
-	h.Add("Content-Type", "text/plain")
-	h.Add("charset", "utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
-}
-
-func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
-	cfg.fileserverHits = atomic.Int32{}
-	w.Write([]byte("Fileserver hits reset succesfully."))
 }
 
 func main() {
@@ -46,9 +20,10 @@ func main() {
 	mux := http.NewServeMux()
 
 	// register handlers
-	mux.HandleFunc("/healthz", readinessHandler)
-	mux.HandleFunc("/metrics", apiCfg.hitsHandler)
-	mux.HandleFunc("/reset", apiCfg.resetHandler)
+	mux.HandleFunc("GET /api/healthz", readinessHandler)
+
+	mux.HandleFunc("GET /admin/metrics", apiCfg.hitsHandler)
+	mux.HandleFunc("POST /admin/reset", apiCfg.resetHandler)
 
 	// fileserver handler
 	fS := http.FileServer(http.Dir("."))
@@ -61,7 +36,15 @@ func main() {
 		Addr:                         ":8080",
 		Handler:                      mux,
 		DisableGeneralOptionsHandler: false,
+		ReadTimeout:                  30 * time.Second,
+		WriteTimeout:                 60 * time.Second,
+		IdleTimeout:                  120 * time.Second,
 	}
 
-	s.ListenAndServe()
+	err := s.ListenAndServe()
+	if err != nil {
+		if err != http.ErrServerClosed {
+			panic(err)
+		}
+	}
 }
