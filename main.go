@@ -1,19 +1,38 @@
 package main
 
 import (
+	"database/sql"
+	"log"
 	"net/http"
+	"os"
 	"sync/atomic"
 	"time"
+
+	"github.com/dcrauwels/chirpy/internal/database"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
 )
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	db             *database.Queries
 }
 
 func main() {
+	// load .env into env variables
+	godotenv.Load()
+	dbURL := os.Getenv("DB_URL")
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	dbQueries := database.New(db)
+
 	// apiconfig
 	apiCfg := apiConfig{
 		fileserverHits: atomic.Int32{},
+		db:             dbQueries,
 	}
 
 	// servemux
@@ -22,6 +41,7 @@ func main() {
 	// register handlers
 	mux.HandleFunc("GET /api/healthz", readinessHandler)        //api.go
 	mux.HandleFunc("POST /api/validate_chirp", validateHandler) //api.go
+	mux.HandleFunc("POST /api/users", usersHandler)             //api.go
 
 	mux.HandleFunc("GET /admin/metrics", apiCfg.hitsHandler) //admin.go
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetHandler) //admin.go
@@ -42,7 +62,7 @@ func main() {
 		IdleTimeout:                  120 * time.Second,
 	}
 
-	err := s.ListenAndServe()
+	err = s.ListenAndServe()
 	if err != nil {
 		if err != http.ErrServerClosed {
 			panic(err)

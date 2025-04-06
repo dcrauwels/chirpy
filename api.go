@@ -53,3 +53,7 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 	validParams := respValidParameters{CleanedBody: cleanedBody}
 	writeJSON(w, 200, validParams) //json.go
 }
+
+func usersHandler(w http.ResponseWriter, r *http.Request) {
+	return
+}
