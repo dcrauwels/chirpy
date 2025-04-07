@@ -55,5 +55,20 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func usersHandler(w http.ResponseWriter, r *http.Request) {
+	// receive request
+	decoder := json.NewDecoder(r.Body)
+	params := struct { // anonymous as I'm only using this once
+		Email string `json:"email"`
+	}{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		writeError(w, 400, err, fmt.Sprintf("request has incorrect JSON structure")) // json.go
+	}
+
+	// check request for validity
+	// query DB
+
+	// write response
+	writeJSON(w, 201, responseParams)
 	return
 }
