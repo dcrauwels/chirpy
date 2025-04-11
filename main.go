@@ -39,9 +39,9 @@ func main() {
 	mux := http.NewServeMux()
 
 	// register handlers
-	mux.HandleFunc("GET /api/healthz", readinessHandler)        //api.go
-	mux.HandleFunc("POST /api/validate_chirp", validateHandler) //api.go
-	mux.HandleFunc("POST /api/users", apiCfg.usersHandler)      //api.go
+	mux.HandleFunc("GET /api/healthz", readinessHandler)     //api.go
+	mux.HandleFunc("POST /api/users", apiCfg.usersHandler)   //api.go
+	mux.HandleFunc("POST /api/chirps", apiCfg.chirpsHandler) // api.go
 
 	mux.HandleFunc("GET /admin/metrics", apiCfg.hitsHandler) //admin.go
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetHandler) //admin.go

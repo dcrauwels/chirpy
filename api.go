@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dcrauwels/chirpy/internal/database"
 	"github.com/dcrauwels/chirpy/strutils"
 	"github.com/google/uuid"
 )
@@ -16,44 +17,64 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-func validateHandler(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
+	// define types
+	type requestParameters struct {
+		Body   string    `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+
 	// constants
 	const maxChirpLength int = 140
-	var invalidWords = [3]string{"kerfuffle", "sharbert", "fornax"} //hardly a constant but used as one
-
-	// define types
-	type reqParameters struct {
-		Body string `json:"body"`
-	}
-	type respValidParameters struct {
-		CleanedBody string `json:"cleaned_body"`
-	}
+	var invalidWords = [3]string{"kerfuffle", "sharbert", "fornax"} //used as const but cannot use const with arrays
 
 	// receive request
-
 	decoder := json.NewDecoder(r.Body)
-	params := reqParameters{}
-	err := decoder.Decode(&params)
+	rParams := requestParameters{}
+	err := decoder.Decode(&rParams)
 	if err != nil {
 		writeError(w, 400, err, "request has incorrect JSON structure") //json.go
+		return
+	}
+	chirpParams := database.CreateChirpParams{
+		Body:   rParams.Body,
+		UserID: rParams.UserID,
 	}
 
 	// other possible checks
-
-	// chirp length
-	err = strutils.ChirpLength(params.Body, maxChirpLength)
+	// 1. chirp length
+	err = strutils.ChirpLength(chirpParams.Body, maxChirpLength)
 	if err != nil {
 		writeError(w, 400, err, fmt.Sprintf("chirp cannot exceed %d characters", maxChirpLength)) //json.go
 		return
 	}
 
 	// clean body
-	cleanedBody := strutils.ReplaceWord(params.Body, invalidWords[:], "****")
+	chirpParams.Body = strutils.ReplaceWord(chirpParams.Body, invalidWords[:], "****")
 
-	// send response
+	// create chirp
+	chirp, err := cfg.db.CreateChirp(r.Context(), chirpParams)
+	if err != nil {
+		writeError(w, 500, err, "server error creating chirp")
+		return
+	}
 
-	validParams := respValidParameters{CleanedBody: cleanedBody}
-	writeJSON(w, 200, validParams) //json.go
+	// write response
+	responseParams := struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Body      string    `json:"body"`
+		UserID    uuid.UUID `json:"user_id"`
+	}{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
+	}
+
+	writeJSON(w, 201, responseParams) //json.go
 }
 
 func (cfg *apiConfig) usersHandler(w http.ResponseWriter, r *http.Request) {
