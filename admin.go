@@ -3,7 +3,10 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"sync/atomic"
+
+	"github.com/joho/godotenv"
 )
 
 func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -26,6 +29,24 @@ func (cfg *apiConfig) hitsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
+	// check if platform in .env is set to dev
+	godotenv.Load()
+	platform := os.Getenv("PLATFORM")
+	if platform != "dev" {
+		writeError(w, 403, nil, "access only allowed from development environment")
+		return
+	}
+
+	// reset fileserverhits
 	cfg.fileserverHits = atomic.Int32{}
-	w.Write([]byte("Fileserver hits reset succesfully."))
+
+	// reset users
+	err := cfg.db.ResetUsers(r.Context())
+	if err != nil {
+		writeError(w, 500, err, "error running resetusers query")
+		return
+	}
+
+	writeJSON(w, 200, "configuration reset succesfully")
+
 }

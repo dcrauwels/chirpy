@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/dcrauwels/chirpy/strutils"
+	"github.com/google/uuid"
 )
 
 func readinessHandler(w http.ResponseWriter, r *http.Request) {
@@ -54,7 +56,7 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, validParams) //json.go
 }
 
-func usersHandler(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) usersHandler(w http.ResponseWriter, r *http.Request) {
 	// receive request
 	decoder := json.NewDecoder(r.Body)
 	params := struct { // anonymous as I'm only using this once
@@ -62,13 +64,34 @@ func usersHandler(w http.ResponseWriter, r *http.Request) {
 	}{}
 	err := decoder.Decode(&params)
 	if err != nil {
-		writeError(w, 400, err, fmt.Sprintf("request has incorrect JSON structure")) // json.go
+		writeError(w, 400, err, "request has incorrect JSON structure") // json.go
+		return
 	}
 
 	// check request for validity
+	if err = strutils.ValidateEmail(params.Email); err != nil {
+		writeError(w, 400, err, "not a valid email address")
+		return
+	}
+
 	// query DB
+	user, err := cfg.db.CreateUser(r.Context(), params.Email)
+	if err != nil {
+		writeError(w, 500, err, "error querying database")
+		return
+	}
 
 	// write response
+	responseParams := struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+	}{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+	}
 	writeJSON(w, 201, responseParams)
-	return
 }

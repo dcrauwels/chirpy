@@ -2,6 +2,7 @@ package strutils
 
 import (
 	"fmt"
+	"net/mail"
 	"slices"
 	"strings"
 )
@@ -25,4 +26,9 @@ func ReplaceWord(input string, target []string, fixed string) string {
 	}
 	output := strings.Join(fixedInput, " ")
 	return output
+}
+
+func ValidateEmail(email string) error {
+	_, err := mail.ParseAddress(email)
+	return err
 }
