@@ -11,13 +11,21 @@ import (
 	"github.com/google/uuid"
 )
 
+type Chirp struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body      string    `json:"body"`
+	UserID    uuid.UUID `json:"user_id"`
+}
+
 func readinessHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
 }
 
-func (cfg *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	// define types
 	type requestParameters struct {
 		Body   string    `json:"body"`
@@ -60,24 +68,40 @@ func (cfg *apiConfig) chirpsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// write response
-	responseParams := struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Body      string    `json:"body"`
-		UserID    uuid.UUID `json:"user_id"`
-	}{
+	responseChirp := Chirp{
 		ID:        chirp.ID,
 		CreatedAt: chirp.CreatedAt,
 		UpdatedAt: chirp.UpdatedAt,
 		Body:      chirp.Body,
 		UserID:    chirp.UserID,
 	}
-
-	writeJSON(w, 201, responseParams) //json.go
+	writeJSON(w, 201, responseChirp) //json.go
 }
 
-func (cfg *apiConfig) usersHandler(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
+	// define types
+	// receive request not needed
+	// query DB
+	chirps, err := cfg.db.GetChirps(r.Context())
+	if err != nil {
+		writeError(w, 500, err, "error querying database when getting chirps")
+	}
+
+	// write response
+	responseChirps := []Chirp{}
+	for _, chirp := range chirps {
+		responseChirps = append(responseChirps, Chirp{
+			ID:        chirp.ID,
+			CreatedAt: chirp.CreatedAt,
+			UpdatedAt: chirp.UpdatedAt,
+			Body:      chirp.Body,
+			UserID:    chirp.UserID,
+		})
+	}
+	writeJSON(w, 200, responseChirps) //json.go
+}
+
+func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
 	// receive request
 	decoder := json.NewDecoder(r.Body)
 	params := struct { // anonymous as I'm only using this once
@@ -98,7 +122,7 @@ func (cfg *apiConfig) usersHandler(w http.ResponseWriter, r *http.Request) {
 	// query DB
 	user, err := cfg.db.CreateUser(r.Context(), params.Email)
 	if err != nil {
-		writeError(w, 500, err, "error querying database")
+		writeError(w, 500, err, "error querying database when creating user")
 		return
 	}
 
