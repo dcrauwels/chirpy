@@ -79,12 +79,11 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
-	// define types
-	// receive request not needed
 	// query DB
 	chirps, err := cfg.db.GetChirps(r.Context())
 	if err != nil {
 		writeError(w, 500, err, "error querying database when getting chirps")
+		return
 	}
 
 	// write response
@@ -99,6 +98,36 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, 200, responseChirps) //json.go
+}
+
+func (cfg *apiConfig) getSingleChirpHandler(w http.ResponseWriter, r *http.Request) {
+	// define types
+	// receive request
+	req := r.PathValue("chirpID")
+	chirpID, err := uuid.Parse(req)
+
+	if err != nil {
+		writeError(w, 400, err, "endpoint is not a valid uuid")
+		return
+	}
+
+	// query DB
+	chirp, err := cfg.db.GetSingleChirp(r.Context(), chirpID)
+	if err != nil {
+		writeError(w, 404, err, "chirp not found")
+		return
+	}
+
+	// write response
+	responseChirp := Chirp{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
+	}
+	writeJSON(w, 200, responseChirp)
+
 }
 
 func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
