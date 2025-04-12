@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dcrauwels/chirpy/internal/auth"
 	"github.com/dcrauwels/chirpy/internal/database"
 	"github.com/dcrauwels/chirpy/strutils"
 	"github.com/google/uuid"
@@ -134,7 +135,8 @@ func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
 	// receive request
 	decoder := json.NewDecoder(r.Body)
 	params := struct { // anonymous as I'm only using this once
-		Email string `json:"email"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}{}
 	err := decoder.Decode(&params)
 	if err != nil {
@@ -148,8 +150,20 @@ func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// hash password
+	hashedPassword, err := auth.HashPassword(params.Password)
+	if err != nil {
+		writeError(w, 500, err, "error hashing password")
+		return
+	}
+
 	// query DB
-	user, err := cfg.db.CreateUser(r.Context(), params.Email)
+	queryParams := database.CreateUserParams{
+		Email:          params.Email,
+		HashedPassword: hashedPassword,
+	}
+
+	user, err := cfg.db.CreateUser(r.Context(), queryParams)
 	if err != nil {
 		writeError(w, 500, err, "error querying database when creating user")
 		return
@@ -168,4 +182,46 @@ func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
 		Email:     user.Email,
 	}
 	writeJSON(w, 201, responseParams)
+}
+
+func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
+	// read request
+	reqParams := struct {
+		Password string `json:"password"`
+		Email    string `json:"email"`
+	}{}
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&reqParams)
+	if err != nil {
+		writeError(w, 400, err, "incorrect JSON structure in request")
+		return
+	}
+
+	// check if email present in db
+	user, err := cfg.db.GetUserByEmail(r.Context(), reqParams.Email)
+	if err != nil {
+		writeError(w, 401, err, "Incorrect email or password")
+		return
+	}
+	// check if password matches
+	err = auth.CheckPasswordHash(user.HashedPassword, reqParams.Password)
+	if err != nil {
+		writeError(w, 401, err, "Incorrect email or password") //  not perfectly DRY but I think the DRY solution would be unwieldy
+		return
+	}
+
+	// write response
+	respParams := struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+	}{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+	}
+
+	writeJSON(w, 200, respParams)
 }
