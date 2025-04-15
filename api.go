@@ -29,8 +29,21 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	// define types
 	type requestParameters struct {
-		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body string `json:"body"`
+	}
+
+	// retrieve token from request
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		writeError(w, 401, err, "1 user not authorized")
+		return
+	}
+
+	// validate token
+	tokenUserID, err := auth.ValidateJWT(token, cfg.secret)
+	if err != nil {
+		writeError(w, 401, err, "2 user not authorized")
+		return
 	}
 
 	// constants
@@ -40,14 +53,14 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 	// receive request
 	decoder := json.NewDecoder(r.Body)
 	rParams := requestParameters{}
-	err := decoder.Decode(&rParams)
+	err = decoder.Decode(&rParams)
 	if err != nil {
 		writeError(w, 400, err, "request has incorrect JSON structure") //json.go
 		return
 	}
 	chirpParams := database.CreateChirpParams{
 		Body:   rParams.Body,
-		UserID: rParams.UserID,
+		UserID: tokenUserID,
 	}
 
 	// other possible checks
@@ -187,8 +200,9 @@ func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
 func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	// read request
 	reqParams := struct {
-		Password string `json:"password"`
-		Email    string `json:"email"`
+		Password         string `json:"password"`
+		Email            string `json:"email"`
+		ExpiresInSeconds *int   `json:"expires_in_seconds,omitempty"`
 	}{}
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&reqParams)
@@ -206,7 +220,22 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	// check if password matches
 	err = auth.CheckPasswordHash(user.HashedPassword, reqParams.Password)
 	if err != nil {
-		writeError(w, 401, err, "Incorrect email or password") //  not perfectly DRY but I think the DRY solution would be unwieldy
+		writeError(w, 401, err, "Incorrect email or password") //  not perfectly DRY but I think the DRY solution would be less legible
+		return
+	}
+
+	// time to make a token
+	// 1. deal with expiresinseconds value
+	expiresInSeconds := 3600
+	if reqParams.ExpiresInSeconds != nil {
+		if *reqParams.ExpiresInSeconds <= 3600 {
+			expiresInSeconds = *reqParams.ExpiresInSeconds
+		}
+	}
+	// 2. make token
+	token, err := auth.MakeJWT(user.ID, cfg.secret, time.Second*time.Duration(expiresInSeconds))
+	if err != nil {
+		writeError(w, 500, err, "error creating JWT")
 		return
 	}
 
@@ -216,11 +245,13 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
 		Email     string    `json:"email"`
+		Token     string    `json:"token"`
 	}{
 		ID:        user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email:     user.Email,
+		Token:     token,
 	}
 
 	writeJSON(w, 200, respParams)
