@@ -35,14 +35,14 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 	// retrieve token from request
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		writeError(w, 401, err, "1 user not authorized")
+		writeError(w, 401, err, "user not authorized")
 		return
 	}
 
 	// validate token
 	tokenUserID, err := auth.ValidateJWT(token, cfg.secret)
 	if err != nil {
-		writeError(w, 401, err, "2 user not authorized")
+		writeError(w, 401, err, "user not authorized")
 		return
 	}
 
@@ -200,9 +200,8 @@ func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
 func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	// read request
 	reqParams := struct {
-		Password         string `json:"password"`
-		Email            string `json:"email"`
-		ExpiresInSeconds *int   `json:"expires_in_seconds,omitempty"`
+		Password string `json:"password"`
+		Email    string `json:"email"`
 	}{}
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&reqParams)
@@ -224,35 +223,105 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// time to make a token
-	// 1. deal with expiresinseconds value
-	expiresInSeconds := 3600
-	if reqParams.ExpiresInSeconds != nil {
-		if *reqParams.ExpiresInSeconds <= 3600 {
-			expiresInSeconds = *reqParams.ExpiresInSeconds
-		}
-	}
-	// 2. make token
-	token, err := auth.MakeJWT(user.ID, cfg.secret, time.Second*time.Duration(expiresInSeconds))
+	// time to make access token
+	token, err := auth.MakeJWT(user.ID, cfg.secret)
 	if err != nil {
 		writeError(w, 500, err, "error creating JWT")
 		return
 	}
 
+	// time to make refresh token
+	// 1. hi im daisy refresh token
+	refreshToken, err := auth.MakeRefreshToken()
+	if err != nil {
+		writeError(w, 500, err, "error creating refresh token")
+		return
+	}
+	// 2. you put the refresh token in the database bag
+	refreshTokenParams := database.CreateRefreshTokenParams{
+		Token:     refreshToken,
+		UserID:    user.ID,
+		ExpiresAt: time.Now().Add(time.Hour * 24 * 60), // 60 days
+	}
+	_, err = cfg.db.CreateRefreshToken(r.Context(), refreshTokenParams)
+	if err != nil {
+		writeError(w, 500, err, "error adding refresh token to database")
+		return
+	}
+
 	// write response
 	respParams := struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
-		Token     string    `json:"token"`
+		ID           uuid.UUID `json:"id"`
+		CreatedAt    time.Time `json:"created_at"`
+		UpdatedAt    time.Time `json:"updated_at"`
+		Email        string    `json:"email"`
+		Token        string    `json:"token"`
+		RefreshToken string    `json:"refresh_token"`
 	}{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
-		Token:     token,
+		ID:           user.ID,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+		Email:        user.Email,
+		Token:        token,
+		RefreshToken: refreshToken,
 	}
 
 	writeJSON(w, 200, respParams)
+}
+
+func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request) {
+	// read request
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		writeError(w, 400, err, "no authorization field in header")
+		return
+	}
+
+	// get refresh token from db
+	refreshToken, err := cfg.db.GetRefreshTokenByToken(r.Context(), token)
+	if err != nil {
+		writeError(w, 401, err, "refresh token not found in DB")
+		return
+	}
+	// check if expired
+	if refreshToken.ExpiresAt.Before(time.Now()) {
+		writeError(w, 401, err, "refresh token expired")
+		return
+	}
+	// check if revoked
+	if refreshToken.RevokedAt.Valid {
+		writeError(w, 401, err, "refresh token revoked")
+		return
+	}
+
+	// return access token
+	accessToken, err := auth.MakeJWT(refreshToken.UserID, cfg.secret)
+	if err != nil {
+		writeError(w, 500, err, "error creating access token")
+	}
+
+	respParams := struct {
+		Token string `json:"token"`
+	}{
+		Token: accessToken,
+	}
+
+	writeJSON(w, 200, respParams)
+}
+
+func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request) {
+	// get token
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		writeError(w, 400, err, "no authorization field in header")
+		return
+	}
+
+	// run revoke query
+	err = cfg.db.RevokeRefreshTokenByToken(r.Context(), token)
+	if err != nil {
+		writeError(w, 400, err, "refresh token not found in database")
+	}
+
+	writeJSON(w, 204, nil)
 }

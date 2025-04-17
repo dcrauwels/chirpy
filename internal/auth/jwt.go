@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 )
 
-func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (string, error) {
-
+func MakeJWT(userID uuid.UUID, tokenSecret string) (string, error) {
+	const expiresIn = time.Hour
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
 		Issuer:    "chirpy",
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -35,6 +35,7 @@ func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
 	// parse the token
 	token, err := jwt.ParseWithClaims(tokenString, claims, keyFunc)
 	if err != nil {
+		fmt.Println(tokenString)
 		return uuid.Nil, err
 	}
 

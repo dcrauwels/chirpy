@@ -2,7 +2,6 @@ package auth
 
 import (
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 )
@@ -40,10 +39,9 @@ func TestJWT(t *testing.T) {
 	// arguments
 	userID := uuid.New()
 	tokenSecret := "qqpp1001"
-	expiresIn := time.Second
 
 	// make jwt
-	jwt, err := MakeJWT(userID, tokenSecret, expiresIn)
+	jwt, err := MakeJWT(userID, tokenSecret)
 	if err != nil {
 		t.Errorf(`MakeJWT(userID, "qqpp1001", time.Second) = %s, %v; expected token, nil`, jwt, err)
 	}
@@ -62,12 +60,4 @@ func TestJWT(t *testing.T) {
 	if err == nil {
 		t.Errorf(`ValidateJWT(jwt, "zasxzasx") = %v, %v; expected uuid.Nil, err`, wrongID, err)
 	}
-
-	// expired token
-	time.Sleep(time.Second)
-	wrongID, err = ValidateJWT(jwt, "qqpp1001")
-	if err == nil {
-		t.Errorf(`ValidateJWT(jwt, "qqpp1001") = %v, %v; expected uuid.Nil err because of expired duration`, wrongID, err)
-	}
-
 }
