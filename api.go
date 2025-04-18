@@ -197,6 +197,67 @@ func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, responseParams)
 }
 
+func (cfg *apiConfig) putUsersHandler(w http.ResponseWriter, r *http.Request) {
+	// read request header
+	accessToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		writeError(w, 401, err, "no authorization field in header")
+		return
+	}
+	userID, err := auth.ValidateJWT(accessToken, cfg.secret)
+
+	if err != nil {
+		writeError(w, 401, err, "access token invalid")
+		return
+	}
+
+	// read request body
+	reqParams := struct {
+		Password string `json:"password"`
+		Email    string `json:"email"`
+	}{}
+	decoder := json.NewDecoder(r.Body)
+	err = decoder.Decode(&reqParams)
+	if err != nil {
+		writeError(w, 400, err, "incorrect JSON structure in request")
+		return
+	}
+
+	// hash password
+	hashedPassword, err := auth.HashPassword(reqParams.Password)
+	if err != nil {
+		writeError(w, 500, err, "error hashing password")
+		return
+	}
+
+	// run uupdateemailpassword query
+	updateParams := database.UpdateEmailPasswordParams{
+		ID:             userID,
+		Email:          reqParams.Email,
+		HashedPassword: hashedPassword,
+	}
+	updatedUser, err := cfg.db.UpdateEmailPassword(r.Context(), updateParams)
+	if err != nil {
+		writeError(w, 500, err, "error updating email and password")
+		return
+	}
+
+	// return user values with 200 code
+	updatedUserWithoutPassword := struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+	}{
+		ID:        updatedUser.ID,
+		CreatedAt: updatedUser.CreatedAt,
+		UpdatedAt: updatedUser.UpdatedAt,
+		Email:     updatedUser.Email,
+	}
+	writeJSON(w, 200, updatedUserWithoutPassword)
+
+}
+
 func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	// read request
 	reqParams := struct {
@@ -273,7 +334,7 @@ func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request) {
 	// read request
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		writeError(w, 400, err, "no authorization field in header")
+		writeError(w, 401, err, "no authorization field in header")
 		return
 	}
 
@@ -313,14 +374,14 @@ func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request) {
 	// get token
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		writeError(w, 400, err, "no authorization field in header")
+		writeError(w, 401, err, "no authorization field in header")
 		return
 	}
 
 	// run revoke query
 	err = cfg.db.RevokeRefreshTokenByToken(r.Context(), token)
 	if err != nil {
-		writeError(w, 400, err, "refresh token not found in database")
+		writeError(w, 401, err, "refresh token not found in database")
 	}
 
 	writeJSON(w, 204, nil)
