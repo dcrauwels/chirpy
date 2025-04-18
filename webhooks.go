@@ -3,8 +3,10 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 
+	"github.com/dcrauwels/chirpy/internal/auth"
 	"github.com/google/uuid"
 )
 
@@ -28,6 +30,16 @@ func (cfg *apiConfig) polkaHandler(w http.ResponseWriter, r *http.Request) {
 	//event != user.upgraded -> 204 get out
 	if reqParams.Event != "user.upgraded" {
 		writeJSON(w, 204, nil)
+		return
+	}
+	//apikey
+	apiKey, err := auth.GetAPIKey(r.Header)
+	if err != nil {
+		writeError(w, 401, err, "no API key provided")
+		return
+	}
+	if apiKey != cfg.polkaKey {
+		writeError(w, 401, errors.New("incorrect API key"), "API key provided does not match known key")
 		return
 	}
 

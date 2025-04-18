@@ -17,6 +17,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	db             *database.Queries
 	secret         string
+	polkaKey       string
 }
 
 func main() {
@@ -35,6 +36,7 @@ func main() {
 		fileserverHits: atomic.Int32{},
 		db:             dbQueries,
 		secret:         os.Getenv("SECRET"),
+		polkaKey:       os.Getenv("POLKA_KEY"),
 	}
 
 	// servemux
