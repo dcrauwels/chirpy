@@ -1,7 +1,9 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -141,7 +143,55 @@ func (cfg *apiConfig) getSingleChirpHandler(w http.ResponseWriter, r *http.Reque
 		UserID:    chirp.UserID,
 	}
 	writeJSON(w, 200, responseChirp)
+}
 
+func (cfg *apiConfig) deleteChirpsHandler(w http.ResponseWriter, r *http.Request) {
+	// read request
+	req := r.PathValue("chirpID")
+	chirpID, err := uuid.Parse(req)
+	if err != nil {
+		writeError(w, 400, err, "endpoint is not a valid uuid")
+		return
+	}
+
+	// tokenomics
+	//get token
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		writeError(w, 401, err, "no authorization header found in request")
+		return
+	}
+	//validate token
+	userID, err := auth.ValidateJWT(token, cfg.secret)
+	if err != nil {
+		writeError(w, 401, err, "no valid access token found")
+		return
+	}
+
+	// querynomics
+	//check if chirp exists
+	chirp, err := cfg.db.GetSingleChirp(r.Context(), chirpID)
+	if err == sql.ErrNoRows {
+		writeError(w, 404, err, "chirp not found")
+		return
+	} else if err != nil {
+		writeError(w, 500, err, "error querying database")
+		return
+	} else if chirp.UserID != userID {
+		writeError(w, 403, errors.New("wrong user ID"), "user not authorized to delete chirp")
+	}
+	//delete query
+	delParams := database.DeleteSingleChirpParams{
+		ID:     chirpID,
+		UserID: userID,
+	}
+	_, err = cfg.db.DeleteSingleChirp(r.Context(), delParams)
+	if err != nil {
+		writeError(w, 500, err, "error querying database")
+	}
+
+	// return 204
+	writeJSON(w, 204, nil)
 }
 
 func (cfg *apiConfig) postUsersHandler(w http.ResponseWriter, r *http.Request) {
