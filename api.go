@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/dcrauwels/chirpy/internal/auth"
@@ -13,6 +14,14 @@ import (
 	"github.com/dcrauwels/chirpy/strutils"
 	"github.com/google/uuid"
 )
+
+type Chirp struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body      string    `json:"body"`
+	UserID    uuid.UUID `json:"user_id"`
+}
 
 func readinessHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
@@ -76,7 +85,7 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// write response
-	responseChirp := database.Chirp{
+	responseChirp := Chirp{
 		ID:        chirp.ID,
 		CreatedAt: chirp.CreatedAt,
 		UpdatedAt: chirp.UpdatedAt,
@@ -87,22 +96,58 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 }
 
 func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
-	// query DB
-	chirps, err := cfg.db.GetChirps(r.Context())
-	if err != nil {
-		writeError(w, 500, err, "error querying database when getting chirps")
+	// read request
+	//query parameters
+	authorID := r.URL.Query().Get("author_id")
+	sortMethod := r.URL.Query().Get("sort")
+	if sortMethod == "" {
+		sortMethod = "asc"
+	} else if sortMethod != "desc" && sortMethod != "asc" {
+		writeError(w, 400, errors.New("incorrect query parameter"), "sort value should be either 'asc' or 'desc'")
 		return
 	}
 
+	// query DB
+	var chirps []database.Chirp // need to initialize both of these beforehand because of if/else scoping
+	var err error
+	//no authorID
+	if authorID == "" {
+		chirps, err = cfg.db.GetChirps(r.Context())
+		if err != nil {
+			writeError(w, 500, err, "error querying database when getting chirps")
+			return
+		}
+	} else { // in other words an authorID was provided
+		userID, err := uuid.Parse(authorID)
+		if err != nil { // check if it parses properly to a UUID
+			writeError(w, 400, err, "invalid author ID provided")
+			return
+		}
+		chirps, err = cfg.db.GetChirpsByID(r.Context(), userID)
+		if err == sql.ErrNoRows {
+			writeError(w, 400, err, "no chirps found for this author ID")
+			return
+		} else if err != nil {
+			writeError(w, 500, err, "error querying database for chirps by author ID")
+			return
+		}
+	}
+
 	// write response
-	responseChirps := []database.Chirp{}
+	responseChirps := []Chirp{}
 	for _, chirp := range chirps {
-		responseChirps = append(responseChirps, database.Chirp{
+		responseChirps = append(responseChirps, Chirp{
 			ID:        chirp.ID,
 			CreatedAt: chirp.CreatedAt,
 			UpdatedAt: chirp.UpdatedAt,
 			Body:      chirp.Body,
 			UserID:    chirp.UserID,
+		})
+	}
+
+	if sortMethod == "desc" {
+		sort.Slice(responseChirps, func(i, j int) bool {
+			return responseChirps[i].UpdatedAt.After(responseChirps[j].UpdatedAt)
 		})
 	}
 	writeJSON(w, 200, responseChirps) //json.go
@@ -127,7 +172,7 @@ func (cfg *apiConfig) getSingleChirpHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	// write response
-	responseChirp := database.Chirp{
+	responseChirp := Chirp{
 		ID:        chirp.ID,
 		CreatedAt: chirp.CreatedAt,
 		UpdatedAt: chirp.UpdatedAt,
